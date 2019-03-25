@@ -783,6 +783,10 @@ function Questie:AddFrameNoteData(icon, data)
             icon.averageY = 0;
             icon.countForAverage = 0;
         end
+        if icon.data.icontypes == nil then
+            icon.data.icontypes = {}
+        end
+        icon.data.icontypes[data.icontype] = true
         local numQuests = 0;
         for k, v in pairs(icon.quests) do
             numQuests = numQuests + 1;
@@ -1136,6 +1140,7 @@ end
 -- QuestieUsedNotesFrame to new table;
 ---------------------------------------------------------------------------------------------------
 function Questie:CLEAR_ALL_NOTES()
+    Polygon:CLEAR_ALL_NOTES()
     --Questie:debug_Print("CLEAR_ALL_NOTES");
     Astrolabe:RemoveAllMinimapIcons();
     clustersByFrame = nil;
@@ -1262,9 +1267,9 @@ function Questie:AddClusterFromNote(frame, identifier, v)
     end
     local roundedX = v.x;
     local roundedY = v.y;
-    if QuestieConfig.clusterQuests and frame == "WorldMapNote" and identifier == "Objectives" then
-        roundedX = Questie:RoundCoordinate(v.x, 5);
-        roundedY = Questie:RoundCoordinate(v.y, 5);
+    if QuestieConfig.clusterQuests and frame == "WorldMapNote" and identifier ~= "Quests" then
+        roundedX = Questie:RoundCoordinate(v.x, 35);
+        roundedY = Questie:RoundCoordinate(v.y, 35);
     end
     if clustersByFrame[frame][identifier][v.continent][v.zoneid][roundedX] == nil then
         clustersByFrame[frame][identifier][v.continent][v.zoneid][roundedX] = {};
@@ -1392,9 +1397,9 @@ function Questie:DRAW_NOTES()
 end
 ---------------------------------------------------------------------------------------------------
 function Questie:DrawClusters(clusters, frameName, scale, frame, button)
-    local frameLevel = 9;
+    local frameLevel = 13;
     if frameName == "MiniMapNote" then
-        frameLevel = 7;
+        frameLevel = 11;
     end
     for i, cluster in pairs(clusters) do
         table.sort(cluster.points, function(a, b)
@@ -1411,28 +1416,79 @@ function Questie:DrawClusters(clusters, frameName, scale, frame, button)
             end
             return a.questHash < b.questHash
         end)
-        local Icon = Questie:GetBlankNoteFrame(frame);
+        local finalFrameLevel = frameLevel;
+        local polygonClusters = {}
         for j, v in pairs(cluster.points) do
-            if j == 1 then
-                local finalFrameLevel = frameLevel;
-                if v.icontype == "complete" then finalFrameLevel = finalFrameLevel + 1; end
-                Questie:SetFrameNoteData(Icon, v, frame, finalFrameLevel, frameName, scale);
-            else
-                Questie:AddFrameNoteData(Icon, v);
+            local polygonType = "other"
+            if ObjectiveColors[v.icontype] ~= nil then
+                polygonType = v.icontype
+            end
+            if polygonClusters[polygonType] == nil then
+                polygonClusters[polygonType] = {}
+            end
+            table.insert(polygonClusters[polygonType], v)
+        end
+        local icons = {}
+        local polygonHulls = {}
+        for j, points in pairs(polygonClusters) do
+            polygonHulls[j] = Polygon:jarvis_march(points) or points
+            local polygonCenter = Polygon:CenterPoint(polygonHulls[j])
+            local x, y = Questie:RoundCoordinate(polygonCenter.x, 2), Questie:RoundCoordinate(polygonCenter.y, 2)
+            if icons[x] == nil then
+                icons[x] = {}
+            end
+            if icons[x][y] == nil then
+                icons[x][y] = Questie:GetBlankNoteFrame(frame)
+            end
+            for j, v in pairs(points) do
+                if icons[x][y].data == nil then
+                    --TODO put "complete" icons on top
+                    Questie:SetFrameNoteData(icons[x][y], v, frame, frameLevel - QuestieIcons[v.icontype].priority, frameName, scale)
+                else
+                    Questie:AddFrameNoteData(icons[x][y], v)
+                end
             end
         end
-        Questie:PostProcessIconPaths(Icon);
-        if frameName == "MiniMapNote" then
-            Icon:SetHighlightTexture(QuestieIcons[Icon.data.icontype].path, "ADD");
-            Astrolabe:PlaceIconOnMinimap(Icon, Icon.data.continent, Icon.data.zoneid, Icon.averageX, Icon.averageY);
-            table.insert(QuestieUsedNoteFrames, Icon);
-        else
-            Icon:Show();
-            xx, yy = Astrolabe:PlaceIconOnWorldMap(button, Icon, Icon.data.continent, Icon.data.zoneid, Icon.averageX, Icon.averageY);
-            if(xx and yy and xx > 0 and xx < 1 and yy > 0 and yy < 1) then
-                table.insert(QuestieUsedNoteFrames, Icon);
-            else
-                Questie:Clear_Note(Icon);
+        for x, v in pairs(icons) do
+            for y, Icon in pairs(icons[x]) do
+                Questie:PostProcessIconPaths(Icon)
+
+                if frameName == "MiniMapNote" then
+                    Icon:SetHighlightTexture(QuestieIcons[Icon.data.icontype].path, "ADD");
+                    Astrolabe:PlaceIconOnMinimap(Icon, Icon.data.continent, Icon.data.zoneid, Icon.averageX, Icon.averageY);
+                    table.insert(QuestieUsedNoteFrames, Icon);
+                else
+                    Icon:Show();
+                    xx, yy = Astrolabe:PlaceIconOnWorldMap(button, Icon, Icon.data.continent, Icon.data.zoneid, Icon.averageX, Icon.averageY);
+                    if(xx and yy and xx > 0 and xx < 1 and yy > 0 and yy < 1) then
+                        table.insert(QuestieUsedNoteFrames, Icon);
+
+                        local c, z = GetCurrentMapContinent(), GetCurrentMapZone();
+                        if (c == Icon.data.continent and z == Icon.data.zoneid) then
+                            local count = 0
+                            for icontype, b in pairs(Icon.data.icontypes) do
+                                count = count + 1
+                                local hull = polygonHulls[icontype]
+                                local objectiveColor = ObjectiveColors[icontype]
+                                if objectiveColor ~= nil then
+                                    local polygons = Polygon:DrawHull(hull, objectiveColor.r, objectiveColor.g, objectiveColor.b)
+                                    if (polygons ~= nil) then
+                                        for k, v in pairs(polygons) do
+                                            local point, relativeTo, relativePoint, xOfs, yOfs = v:GetPoint()
+                                            v:SetParent(frame)
+                                            v:SetFrameLevel(objectiveColor.frameLevel)
+                                            v:Show()
+                                            Astrolabe:PlaceIconOnWorldMap(button, v, Icon.data.continent, Icon.data.zoneid, xOfs, yOfs, "CENTER")
+                                        end
+                                    end
+                                end
+                            end
+                            print_r(count)
+                        end
+                    else
+                        Questie:Clear_Note(Icon);
+                    end
+                end
             end
         end
     end
@@ -1462,6 +1518,29 @@ function Questie:debug_Print(...)
     end
     getglobal("ChatFrame"..debugWin):AddMessage(out, 1.0, 1.0, 0.3);
 end
+---------------------------------------------------------------------------------------------------
+-- Sets the objective polygon colors
+---------------------------------------------------------------------------------------------------
+ObjectiveColors = {
+    ["slay"] = {
+        r = 1,
+        g = 0,
+        b = 0,
+        frameLevel = 8
+    },
+    ["object"] = {
+        r = 1,
+        g = 0.5,
+        b = 0,
+        frameLevel = 7
+    },
+    ["loot"] = {
+        r = 0,
+        g = 1,
+        b = 0,
+        frameLevel = 6
+    }
+}
 ---------------------------------------------------------------------------------------------------
 -- Sets the icon type
 ---------------------------------------------------------------------------------------------------

@@ -55512,6 +55512,18 @@ function GetEntityLocations(entity)
                 end
             end
         end
+        if sourceType == "drop_id" then
+            for sourceId, b in pairs(sources) do
+                local locationMeta, ids = GetNewMonsterLocations(sourceId)
+                if next(locationMeta) then
+                    if locations[sourceType] == nil then locations[sourceType] = {} end
+                    local sourceName = locationMeta.name
+                    locationMeta.name = nil
+                    locations[sourceType][sourceName] = locationMeta
+                    for c, zs in pairs(ids) do if mapIds[c] == nil then mapIds[c] = {} end for z, b in pairs(zs) do mapIds[c][z] = true end end
+                end
+            end
+        end
         if sourceType == "rewardedby" then
             for sourceName, b in pairs(sources) do
                 local locationMeta, ids = GetMonsterLocations(sourceName)
@@ -55633,7 +55645,9 @@ function GetEntityLocations(entity)
 end
 
 function GetMonsterLocations(monsterName)
-    if QuestieMonsters[monsterName] then
+    if QuestieNewMonstersByName[monsterName] then
+        return GetEntityLocations(QuestieNewMonstersByName[monsterName])
+    elseif QuestieMonsters[monsterName] then
         return GetEntityLocations(QuestieMonsters[monsterName])
     elseif QuestieAdditionalStartFinishLookup[monsterName] then
         return GetEntityLocations({
@@ -55642,6 +55656,13 @@ function GetMonsterLocations(monsterName)
             },
             ["locationCount"] = 1
         })
+    end
+    return {}, {}
+end
+
+function GetNewMonsterLocations(monsterId)
+    if QuestieNewMonsters[monsterId] then
+        return GetEntityLocations(QuestieNewMonsters[monsterId])
     end
     return {}, {}
 end
