@@ -102,7 +102,7 @@ function Questie:AddQuestToMap(questHash, redraw)
                 local iconMeta = {
                     ["defaultIcon"] = defaultIcon
                 };
-                Questie:RecursiveCreateNotes(c, z, questHash, objective.path, iconMeta, objectiveid);
+                Questie:RecursiveCreateNotes(c, z, questHash, objective.path, iconMeta, objectiveid, objective.name);
             end
         end
     else
@@ -216,7 +216,7 @@ end
 ---------------------------------------------------------------------------------------------------
 -- Add quest note to map
 ---------------------------------------------------------------------------------------------------
-function Questie:AddNoteToMap(continent, zoneid, posx, posy, type, questHash, objectiveid, path)
+function Questie:AddNoteToMap(continent, zoneid, posx, posy, type, questHash, objectiveid, objectivename, path)
     if (not type == "complete") then
         return;
     end
@@ -234,6 +234,7 @@ function Questie:AddNoteToMap(continent, zoneid, posx, posy, type, questHash, ob
     Note.icontype = type;
     Note.questHash = questHash;
     Note.objectiveid = objectiveid;
+    Note.objectivename = objectivename
     Note.path = path
     table.insert(QuestieMapNotes[continent][zoneid], Note);
 end
@@ -532,6 +533,14 @@ function Questie_Tooltip_OnEnter()
         else
             Tooltip = GameTooltip;
         end
+        if QuestiePolygons[this.data.objectivename] ~= nil then
+            for i, polygons in pairs(QuestiePolygons[this.data.objectivename]) do
+                for j, polygon in pairs(polygons) do
+                    polygon:SetFrameLevel(polygon.baseFrameLevel + 10)
+                    polygon.texture:SetAlpha(0.5)
+                end
+            end
+        end
         Tooltip:SetOwner(this, this);
         Tooltip.owner = this
         local count = 0;
@@ -738,6 +747,14 @@ function Questie:CreateBlankFrameNote(frame)
     f.texture = t;
     f:SetScript("OnEnter", Questie_Tooltip_OnEnter);
     f:SetScript("OnLeave", function()
+        if QuestiePolygons[this.data.objectivename] ~= nil then
+            for i, polygons in pairs(QuestiePolygons[this.data.objectivename]) do
+                for j, polygon in pairs(polygons) do
+                    polygon:SetFrameLevel(polygon.baseFrameLevel)
+                    polygon.texture:SetAlpha(0.25)
+                end
+            end
+        end
         if(WorldMapTooltip) then
             WorldMapTooltip:Hide();
         end
@@ -783,10 +800,12 @@ function Questie:AddFrameNoteData(icon, data)
             icon.averageY = 0;
             icon.countForAverage = 0;
         end
-        if icon.data.icontypes == nil then
-            icon.data.icontypes = {}
+        if icon.objectivetypes == nil then
+            icon.objectivetypes = {}
         end
-        icon.data.icontypes[data.icontype] = true
+        if data.objectivename ~= nil then
+            icon.objectivetypes[data.objectivename] = data.icontype
+        end
         local numQuests = 0;
         for k, v in pairs(icon.quests) do
             numQuests = numQuests + 1;
@@ -1010,7 +1029,7 @@ function Questie:RecursiveGetPathLocations(path, locations)
     return locations;
 end
 ---------------------------------------------------------------------------------------------------
-function Questie:RecursiveCreateNotes(c, z, v, locationMeta, iconMeta, objectiveid, path, pathKeys)
+function Questie:RecursiveCreateNotes(c, z, v, locationMeta, iconMeta, objectiveid, objectivename, path, pathKeys)
     if path == nil then path = {}; end
     if pathKeys == nil then pathKeys = {}; end
     for sourceType, sources in pairs(locationMeta) do
@@ -1037,7 +1056,7 @@ function Questie:RecursiveCreateNotes(c, z, v, locationMeta, iconMeta, objective
                     if icontype == "available" or icontype == "availablesoon" then
                         Questie:AddAvailableNoteToMap(location[1],location[2],location[3],location[4],icontype,v,-1,deepcopy(path));
                     else
-                        Questie:AddNoteToMap(location[1],location[2],location[3],location[4],icontype,v,objectiveid,deepcopy(path));
+                        Questie:AddNoteToMap(location[1],location[2],location[3],location[4],icontype,v,objectiveid,objectivename,deepcopy(path));
                     end
                 end
             end
@@ -1075,7 +1094,7 @@ function Questie:RecursiveCreateNotes(c, z, v, locationMeta, iconMeta, objective
                     newObjectiveId = sourceName;
                     newIconMeta.selectedIcon = nil;
                 end
-                Questie:RecursiveCreateNotes(c, z, v, sourceLocationMeta, newIconMeta, newObjectiveId, newPath, newPathKeys);
+                Questie:RecursiveCreateNotes(c, z, v, sourceLocationMeta, newIconMeta, newObjectiveId, objectivename, newPath, newPathKeys);
             end
         end
     end
@@ -1133,6 +1152,7 @@ function Questie:Clear_Note(v)
     v.averageX = nil;
     v.averageY = nil;
     v.countForAverage = nil;
+    v.objectivetypes = nil
     table.insert(FramePool, v);
 end
 ---------------------------------------------------------------------------------------------------
@@ -1141,6 +1161,7 @@ end
 ---------------------------------------------------------------------------------------------------
 function Questie:CLEAR_ALL_NOTES()
     Polygon:CLEAR_ALL_NOTES()
+    QuestiePolygons = {}
     --Questie:debug_Print("CLEAR_ALL_NOTES");
     Astrolabe:RemoveAllMinimapIcons();
     clustersByFrame = nil;
@@ -1396,6 +1417,7 @@ function Questie:DRAW_NOTES()
     Questie:DrawClusters(minimapClusters, "MiniMapNote", QUESTIE_NOTES_MINIMAP_ICON_SCALE, Minimap);
 end
 ---------------------------------------------------------------------------------------------------
+QuestiePolygons = {}
 function Questie:DrawClusters(clusters, frameName, scale, frame, button)
     local frameLevel = 13;
     if frameName == "MiniMapNote" then
@@ -1419,20 +1441,20 @@ function Questie:DrawClusters(clusters, frameName, scale, frame, button)
         local finalFrameLevel = frameLevel;
         local polygonClusters = {}
         for j, v in pairs(cluster.points) do
-            local polygonType = "other"
+            local objectivename = "other"
             if ObjectiveColors[v.icontype] ~= nil then
-                polygonType = v.icontype
+                objectivename = v.objectivename
             end
-            if polygonClusters[polygonType] == nil then
-                polygonClusters[polygonType] = {}
+            if polygonClusters[objectivename] == nil then
+                polygonClusters[objectivename] = {}
             end
-            table.insert(polygonClusters[polygonType], v)
+            table.insert(polygonClusters[objectivename], v)
         end
         local icons = {}
         local polygonHulls = {}
-        for j, points in pairs(polygonClusters) do
-            polygonHulls[j] = Polygon:jarvis_march(points) or points
-            local polygonCenter = Polygon:CenterPoint(polygonHulls[j])
+        for objectivename, points in pairs(polygonClusters) do
+            polygonHulls[objectivename] = Polygon:jarvis_march(points) or points
+            local polygonCenter = Polygon:CenterPoint(polygonHulls[objectivename])
             local x, y = Questie:RoundCoordinate(polygonCenter.x, 2), Questie:RoundCoordinate(polygonCenter.y, 2)
             if icons[x] == nil then
                 icons[x] = {}
@@ -1442,7 +1464,6 @@ function Questie:DrawClusters(clusters, frameName, scale, frame, button)
             end
             for j, v in pairs(points) do
                 if icons[x][y].data == nil then
-                    --TODO put "complete" icons on top
                     Questie:SetFrameNoteData(icons[x][y], v, frame, frameLevel - QuestieIcons[v.icontype].priority, frameName, scale)
                 else
                     Questie:AddFrameNoteData(icons[x][y], v)
@@ -1465,25 +1486,26 @@ function Questie:DrawClusters(clusters, frameName, scale, frame, button)
 
                         local c, z = GetCurrentMapContinent(), GetCurrentMapZone();
                         if (c == Icon.data.continent and z == Icon.data.zoneid) then
-                            local count = 0
-                            for icontype, b in pairs(Icon.data.icontypes) do
-                                count = count + 1
-                                local hull = polygonHulls[icontype]
+                            for objectivename, icontype in pairs(Icon.objectivetypes) do
+                                local hull = polygonHulls[objectivename]
                                 local objectiveColor = ObjectiveColors[icontype]
                                 if objectiveColor ~= nil then
                                     local polygons = Polygon:DrawHull(hull, objectiveColor.r, objectiveColor.g, objectiveColor.b)
                                     if (polygons ~= nil) then
+                                        if QuestiePolygons[objectivename] == nil then
+                                            QuestiePolygons[objectivename] = {}
+                                        end
+                                        table.insert(QuestiePolygons[objectivename], polygons)
                                         for k, v in pairs(polygons) do
                                             local point, relativeTo, relativePoint, xOfs, yOfs = v:GetPoint()
-                                            v:SetParent(frame)
-                                            v:SetFrameLevel(objectiveColor.frameLevel)
+                                            v.baseFrameLevel = objectiveColor.frameLevel
+                                            v:SetFrameLevel(v.baseFrameLevel)
                                             v:Show()
                                             Astrolabe:PlaceIconOnWorldMap(button, v, Icon.data.continent, Icon.data.zoneid, xOfs, yOfs, "CENTER")
                                         end
                                     end
                                 end
                             end
-                            print_r(count)
                         end
                     else
                         Questie:Clear_Note(Icon);

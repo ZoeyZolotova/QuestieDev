@@ -175,7 +175,7 @@ function Polygon:DrawPolygon(PointA, PointB, PointC, r, g, b, a)
 		fr:SetWidth(w);
 		fr:SetHeight(h);
 		fr:SetPoint("CENTER",tlX,tlY)
-		texture:SetVertexColor(r or 0.5, g or 0, b or 1,a or 0.5)
+		texture:SetVertexColor(r or 0.5, g or 0, b or 1,a or 0.25)
 		texture:SetAllPoints(fr);
 		fr.texture = texture;
 		return fr
