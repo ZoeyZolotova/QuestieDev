@@ -38,11 +38,13 @@ Database\hash.lua
 Database\finishers.lua
 Database\objects.lua
 Database\newObjects.lua
+Database\newMonsters.lua
 Database\reputations.lua
 Database\addendum.lua
 Astrolabe\Astrolabe.lua
 
 # Questie
+Polygon.lua
 Questie.lua
 Modules\QuestieOptions.lua
 Modules\QuestieArrow.lua

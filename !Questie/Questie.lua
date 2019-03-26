@@ -359,6 +359,7 @@ function Questie:OnUpdate(elapsed)
             TomTomCrazyArrow:Hide()
         end
     end
+    Questie:DrawQueuedIcons()
     runonce = false
 end
 ---------------------------------------------------------------------------------------------------

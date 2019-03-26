@@ -153,7 +153,6 @@ end
 
 --Clears the notes, goes through the Polygon_UsedNoteFrames and clears them. Then sets the QuestieUsedNotesFrame to new table;
 function Polygon:CLEAR_ALL_NOTES()
-	Astrolabe:RemoveAllMinimapIcons();
 	for k, v in pairs(Polygon_UsedNoteFrames) do
 		v:Hide();
 		if(v.texture)then

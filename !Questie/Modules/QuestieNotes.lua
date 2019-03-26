@@ -11,6 +11,8 @@ local FramePool = {};
 local Cluster = {};
 local LastContinent = nil;
 local LastZone = nil;
+local LastPlayerContinent = nil
+local LastPlayerZone = nil
 local Dewdrop = AceLibrary("Dewdrop-2.0");
 local specialSources = { ["openedby"] = 1, };
 local QGet_QuestLogTitle = GetQuestLogTitle;
@@ -28,7 +30,8 @@ QUESTIE_NOTES_WORLD_MAP_ICON_SCALE = 0.75;
 QUESTIE_NOTES_CONTINENT_ICON_SCALE = 1;
 QUESTIE_NOTES_MINIMAP_ICON_SCALE = 1.0;
 QuestieMapNotes = {};
-QuestieUsedNoteFrames = {};
+QuestieUsedWorldMapNoteFrames = {};
+QuestieUsedMiniMapNoteFrames = {};
 QuestieHandledQuests = {};
 QuestieAvailableMapNotes = {};
 QuestieCachedMonstersAndObjects = {};
@@ -79,7 +82,6 @@ function Questie:AddQuestToMap(questHash, redraw)
     if(IsQuestieActive == false) then return; end
     if questHash == -1 then return; end
     --Questie:debug_Print("Notes:AddQuestToMap --> Adding Quest to Map [Hash: "..questHash.."]");
-    local c, z = GetCurrentMapContinent(), GetCurrentMapZone();
     Questie:RemoveQuestFromMap(questHash);
     local objectives = Questie:GetQuestObjectivePaths(questHash)
     --Cache code
@@ -102,7 +104,7 @@ function Questie:AddQuestToMap(questHash, redraw)
                 local iconMeta = {
                     ["defaultIcon"] = defaultIcon
                 };
-                Questie:RecursiveCreateNotes(c, z, questHash, objective.path, iconMeta, objectiveid, objective.name);
+                Questie:RecursiveCreateNotes(questHash, objective.path, iconMeta, objectiveid, objective.name);
             end
         end
     else
@@ -208,10 +210,6 @@ function Questie:RemoveQuestFromMap(questHash, redraw)
     if(QuestieHandledQuests[questHash]) then
         QuestieHandledQuests[questHash] = nil;
     end
-end
----------------------------------------------------------------------------------------------------
-function Questie:GetMapInfoFromID(id)
-    return QuestieZoneIDLookup[id];
 end
 ---------------------------------------------------------------------------------------------------
 -- Add quest note to map
@@ -765,6 +763,7 @@ function Questie:CreateBlankFrameNote(frame)
     end)
     f:SetScript("OnClick", Questie_AvailableQuestClick);
     f:RegisterForClicks("LeftButtonDown", "RightButtonDown", "MiddleButtonDown");
+    f:Hide()
     CREATED_NOTE_FRAMES = CREATED_NOTE_FRAMES+1;
     table.insert(FramePool, f);
     table.insert(AllFrames, f);
@@ -985,19 +984,28 @@ end
 function Questie:NOTES_ON_UPDATE(elapsed)
     if GameLoadingComplete == false then return; end
     local c, z = GetCurrentMapContinent(), GetCurrentMapZone();
+    local pc,pz = Questie:GetCurrentPlayerActualPosition()
     if(c ~= LastContinent or LastZone ~= z) then
-        --Questie:debug_Print("Notes:NOTES_ON_UPDATE: [AddEvent:DRAWNOTES]");
         Questie:SetAvailableQuests();
-        Questie:RedrawNotes();
+        Questie:RedrawWorldMap()
         LastContinent = c;
         LastZone = z;
     end
+    if pc ~= LastPlayerContinent or pz ~= LastPlayerZone then
+        Questie:SetAvailableQuests(nil, GetZoneText());
+        Questie:RedrawMiniMap()
+        LastPlayerContinent = pc;
+        LastPlayerZone = pz;
+    end
     if(WorldMapFrame:IsVisible() and UIOpen == false) then
-        --Questie:debug_Print("NOTES_ON_UPDATE: Created Frames: "..CREATED_NOTE_FRAMES, "Used Frames: "..table.getn(QuestieUsedNoteFrames), "Free Frames: "..table.getn(FramePool));
         UIOpen = true;
     elseif(WorldMapFrame:IsVisible() == nil and UIOpen == true) then
         UIOpen = false;
     end
+end
+function Questie:GetCurrentPlayerActualPosition()
+    local map = QuestieZones[GetZoneText()]
+    return map[4], map[5]
 end
 ---------------------------------------------------------------------------------------------------
 -- Inital pool size (Not tested how much you can do before it lags like shit, from experiance 11
@@ -1029,7 +1037,7 @@ function Questie:RecursiveGetPathLocations(path, locations)
     return locations;
 end
 ---------------------------------------------------------------------------------------------------
-function Questie:RecursiveCreateNotes(c, z, v, locationMeta, iconMeta, objectiveid, objectivename, path, pathKeys)
+function Questie:RecursiveCreateNotes(v, locationMeta, iconMeta, objectiveid, objectivename, path, pathKeys)
     if path == nil then path = {}; end
     if pathKeys == nil then pathKeys = {}; end
     for sourceType, sources in pairs(locationMeta) do
@@ -1049,8 +1057,6 @@ function Questie:RecursiveCreateNotes(c, z, v, locationMeta, iconMeta, objective
             for i, location in pairs(sources) do
                 local MapInfo = QuestieZoneIDLookup[location[1]];
                 if MapInfo ~= nil then
-                    c = MapInfo[4];
-                    z = MapInfo[5];
                     local icontype = iconMeta.selectedIcon;
                     if icontype == nil then icontype = iconMeta.defaultIcon; end
                     if icontype == "available" or icontype == "availablesoon" then
@@ -1094,7 +1100,7 @@ function Questie:RecursiveCreateNotes(c, z, v, locationMeta, iconMeta, objective
                     newObjectiveId = sourceName;
                     newIconMeta.selectedIcon = nil;
                 end
-                Questie:RecursiveCreateNotes(c, z, v, sourceLocationMeta, newIconMeta, newObjectiveId, objectivename, newPath, newPathKeys);
+                Questie:RecursiveCreateNotes(v, sourceLocationMeta, newIconMeta, newObjectiveId, objectivename, newPath, newPathKeys);
             end
         end
     end
@@ -1102,12 +1108,11 @@ end
 ---------------------------------------------------------------------------------------------------
 -- Sets up all available quests
 ---------------------------------------------------------------------------------------------------
-function Questie:SetAvailableQuests(customLevel)
+function Questie:SetAvailableQuests(customLevel, customMapFile)
     QuestieAvailableMapNotes = {};
     local saqtime = GetTime();
     local level = customLevel or UnitLevel("player");
-    local c, z = GetCurrentMapContinent(), GetCurrentMapZone();
-    local mapFileName = GetMapInfo();
+    local mapFileName = customMapFile or GetMapInfo();
     local quests = nil;
     local minLevel = 0;
     local maxLevel = 100;
@@ -1124,7 +1129,7 @@ function Questie:SetAvailableQuests(customLevel)
             count = count + 1;
             local icontype = "available";
             if QuestieHashMap[k].level > level then icontype = "availablesoon"; end
-            Questie:RecursiveCreateNotes(c, z, k, v, {["selectedIcon"] = icontype});
+            Questie:RecursiveCreateNotes(k, v, {["selectedIcon"] = icontype});
         end
         --Questie:debug_Print("SetAvailableQuests: Adding "..count.." available quests took "..tostring((GetTime()- saqtime)*1000).."ms");
         saqtime = nil;
@@ -1135,8 +1140,35 @@ end
 -- calls, and to be able to force a redraw
 ---------------------------------------------------------------------------------------------------
 function Questie:RedrawNotes()
-    Questie:CLEAR_ALL_NOTES();
-    Questie:DRAW_NOTES();
+    Questie:RedrawWorldMap()
+    Questie:RedrawMiniMap()
+end
+function Questie:RedrawWorldMap()
+    Questie:ClearWorldMapNotes()
+    Questie:DrawWorldMapNotes()
+end
+function Questie:RedrawMiniMap()
+    Questie:ClearMiniMapNotes()
+    Questie:DrawMiniMapNotes()
+end
+function Questie:ClearWorldMapNotes()
+    if clustersByFrame ~= nil then clustersByFrame["WorldMapNote"] = nil end
+    Polygon:CLEAR_ALL_NOTES()
+    QuestiePolygons = {}
+    for k, v in pairs(QuestieUsedWorldMapNoteFrames) do
+        Questie:Clear_Note(v)
+    end
+    QuestieQueuedIcons["WorldMapNote"] = {}
+    QuestieUsedWorldMapNoteFrames = {}
+end
+function Questie:ClearMiniMapNotes()
+    if clustersByFrame ~= nil then clustersByFrame["MiniMapNote"] = nil end
+    Astrolabe:RemoveAllMinimapIcons()
+    for k, v in pairs(QuestieUsedMiniMapNoteFrames) do
+        Questie:Clear_Note(v)
+    end
+    QuestieUsedMiniMapNoteFrames = {}
+    QuestieQueuedIcons["MiniMapNote"] = {}
 end
 ---------------------------------------------------------------------------------------------------
 function Questie:Clear_Note(v)
@@ -1160,15 +1192,8 @@ end
 -- QuestieUsedNotesFrame to new table;
 ---------------------------------------------------------------------------------------------------
 function Questie:CLEAR_ALL_NOTES()
-    Polygon:CLEAR_ALL_NOTES()
-    QuestiePolygons = {}
-    --Questie:debug_Print("CLEAR_ALL_NOTES");
-    Astrolabe:RemoveAllMinimapIcons();
-    clustersByFrame = nil;
-    for k, v in pairs(QuestieUsedNoteFrames) do
-        Questie:Clear_Note(v);
-    end
-    QuestieUsedNoteFrames = {};
+    Questie:ClearWorldMapNotes()
+    Questie:ClearMiniMapNotes()
 end
 ---------------------------------------------------------------------------------------------------
 -- Logic for clusters
@@ -1292,6 +1317,16 @@ function Questie:AddClusterFromNote(frame, identifier, v)
         roundedX = Questie:RoundCoordinate(v.x, 35);
         roundedY = Questie:RoundCoordinate(v.y, 35);
     end
+    local C, Z
+    if frame == "WorldMapNote" then
+        C, Z = GetCurrentMapContinent(), GetCurrentMapZone();
+    else
+        C, Z = Questie:GetCurrentPlayerActualPosition()
+    end
+    local nX, nY = Astrolabe:TranslateWorldMapPosition(v.continent, v.zoneid, roundedX, roundedY, C, Z);
+    if not nX or not nY or nX < 0 or nX > 1 or nY < 0 or nY > 1 then
+        return
+    end
     if clustersByFrame[frame][identifier][v.continent][v.zoneid][roundedX] == nil then
         clustersByFrame[frame][identifier][v.continent][v.zoneid][roundedX] = {};
     end
@@ -1338,27 +1373,8 @@ end
 ---------------------------------------------------------------------------------------------------
 -- Checks first if there are any notes for the current zone, then draws the desired icon
 ---------------------------------------------------------------------------------------------------
-function Questie:DRAW_NOTES()
-    --Questie:debug_Print("DRAW_NOTES");
+function Questie:DrawWorldMapNotes()
     local c, z = GetCurrentMapContinent(), GetCurrentMapZone();
-    if (not QuestieConfig.hideMinimapIcons) then
-        -- Draw minimap objective markers
-        if (QuestieMapNotes[c] and QuestieMapNotes[c][z]) then
-            for k, v in pairs(QuestieMapNotes[c][z]) do
-                --If an available quest isn't in the zone or we aren't tracking a quest on the QuestTracker or the user wants to hide all objectives then hide the objectives from the minimap
-                local show = QuestieConfig.alwaysShowObjectives or ((MMLastX ~= 0) and (MMLastY ~= 0)) and (QuestieCachedQuests[v.questHash] ~= nil) and (QuestieCachedQuests[v.questHash]["tracked"] ~= false);
-                if show then
-                    if (v.icontype == "complete") then
-                        Questie:AddClusterFromNote("MiniMapNote", "Quests", v);
-                    else
-                        if QuestieConfig.hideObjectives == false then
-                            Questie:AddClusterFromNote("MiniMapNote", "Objectives", v);
-                        end
-                    end
-                end
-            end
-        end
-    end
     -- Draw world map objective markers
     for k, Continent in pairs(QuestieMapNotes) do
         for zone, noteHeap in pairs(Continent) do
@@ -1386,21 +1402,16 @@ function Questie:DRAW_NOTES()
             end
         end
     end
-    -- Draw available quest markers.
+    -- Draw world map available quest markers.
     if (QuestieAvailableMapNotes[c] and QuestieAvailableMapNotes[c][z]) then
         if (IsQuestieActive == true) then
             local con,zon,x,y = Astrolabe:GetCurrentPlayerPosition();
             for k, v in pairs(QuestieAvailableMapNotes[c][z]) do
                 Questie:AddClusterFromNote("WorldMapNote", "Quests", v);
-                if (not QuestieConfig.hideMinimapIcons) then
-                    Questie:AddClusterFromNote("MiniMapNote", "Quests", v);
-                end
             end
         end
     end
-    local minimapObjectiveClusters = Questie:GetClustersByFrame("MiniMapNote", "Objectives");
     local worldMapObjectiveClusters = Questie:GetClustersByFrame("WorldMapNote", "Objectives");
-    local minimapClusters = Questie:GetClustersByFrame("MiniMapNote", "Quests");
     local worldMapClusters = Questie:GetClustersByFrame("WorldMapNote", "Quests");
     if QuestieConfig.clusterQuests then
         Cluster:CalculateClusters(worldMapClusters, 0.025, 5);
@@ -1411,10 +1422,43 @@ function Questie:DRAW_NOTES()
     elseif (z == 0) then--Single continent
         scale = QUESTIE_NOTES_CONTINENT_ICON_SCALE;
     end
-    Questie:DrawClusters(worldMapObjectiveClusters, "WorldMapNote", scale, WorldMapFrame, WorldMapButton);
     Questie:DrawClusters(worldMapClusters, "WorldMapNote", scale, WorldMapFrame, WorldMapButton);
-    Questie:DrawClusters(minimapObjectiveClusters, "MiniMapNote", QUESTIE_NOTES_MINIMAP_ICON_SCALE, Minimap);
+    Questie:DrawClusters(worldMapObjectiveClusters, "WorldMapNote", scale, WorldMapFrame, WorldMapButton);
+end
+function Questie:DrawMiniMapNotes()
+    local c,z = Questie:GetCurrentPlayerActualPosition()
+    if (not QuestieConfig.hideMinimapIcons) then
+        -- Draw minimap objective markers
+        if (QuestieMapNotes[c] and QuestieMapNotes[c][z]) then
+            for k, v in pairs(QuestieMapNotes[c][z]) do
+                --If an available quest isn't in the zone or we aren't tracking a quest on the QuestTracker or the user wants to hide all objectives then hide the objectives from the minimap
+                local show = QuestieConfig.alwaysShowObjectives or ((MMLastX ~= 0) and (MMLastY ~= 0)) and (QuestieCachedQuests[v.questHash] ~= nil) and (QuestieCachedQuests[v.questHash]["tracked"] ~= false);
+                if show then
+                    if (v.icontype == "complete") then
+                        Questie:AddClusterFromNote("MiniMapNote", "Quests", v);
+                    else
+                        if QuestieConfig.hideObjectives == false then
+                            Questie:AddClusterFromNote("MiniMapNote", "Objectives", v);
+                        end
+                    end
+                end
+            end
+        end
+    end
+    -- Draw mini map available quest markers.
+    if not QuestieConfig.hideMinimapIcons then
+        if (QuestieAvailableMapNotes[c] and QuestieAvailableMapNotes[c][z]) then
+            if (IsQuestieActive == true) then
+                for k, v in pairs(QuestieAvailableMapNotes[c][z]) do
+                    Questie:AddClusterFromNote("MiniMapNote", "Quests", v);
+                end
+            end
+        end
+    end
+    local minimapObjectiveClusters = Questie:GetClustersByFrame("MiniMapNote", "Objectives");
+    local minimapClusters = Questie:GetClustersByFrame("MiniMapNote", "Quests");
     Questie:DrawClusters(minimapClusters, "MiniMapNote", QUESTIE_NOTES_MINIMAP_ICON_SCALE, Minimap);
+    Questie:DrawClusters(minimapObjectiveClusters, "MiniMapNote", QUESTIE_NOTES_MINIMAP_ICON_SCALE, Minimap);
 end
 ---------------------------------------------------------------------------------------------------
 QuestiePolygons = {}
@@ -1473,16 +1517,13 @@ function Questie:DrawClusters(clusters, frameName, scale, frame, button)
         for x, v in pairs(icons) do
             for y, Icon in pairs(icons[x]) do
                 Questie:PostProcessIconPaths(Icon)
-
                 if frameName == "MiniMapNote" then
-                    Icon:SetHighlightTexture(QuestieIcons[Icon.data.icontype].path, "ADD");
-                    Astrolabe:PlaceIconOnMinimap(Icon, Icon.data.continent, Icon.data.zoneid, Icon.averageX, Icon.averageY);
-                    table.insert(QuestieUsedNoteFrames, Icon);
+                    Questie:QueueIconDraw(frameName, Icon)
                 else
                     Icon:Show();
                     xx, yy = Astrolabe:PlaceIconOnWorldMap(button, Icon, Icon.data.continent, Icon.data.zoneid, Icon.averageX, Icon.averageY);
                     if(xx and yy and xx > 0 and xx < 1 and yy > 0 and yy < 1) then
-                        table.insert(QuestieUsedNoteFrames, Icon);
+                        table.insert(QuestieUsedWorldMapNoteFrames, Icon);
 
                         local c, z = GetCurrentMapContinent(), GetCurrentMapZone();
                         if (c == Icon.data.continent and z == Icon.data.zoneid) then
@@ -1509,6 +1550,29 @@ function Questie:DrawClusters(clusters, frameName, scale, frame, button)
                         end
                     else
                         Questie:Clear_Note(Icon);
+                    end
+                end
+            end
+        end
+    end
+end
+QuestieQueuedIcons = {}
+function Questie:QueueIconDraw(frameName, Icon)
+    if QuestieQueuedIcons[frameName] == nil then QuestieQueuedIcons[frameName] = {} end
+    table.insert(QuestieQueuedIcons[frameName], Icon)
+end
+function Questie:DrawQueuedIcons()
+    for frameName, icons in pairs(QuestieQueuedIcons) do
+        if table.getn(icons) > 0 then
+            for i = 5, 1, -1 do
+                local Icon = icons[i]
+                if Icon ~= nil then
+                    table.remove(icons, i)
+                    if frameName == "MiniMapNote" then
+                        Icon:SetHighlightTexture(QuestieIcons[Icon.data.icontype].path, "ADD");
+                        Astrolabe:PlaceIconOnMinimap(Icon, Icon.data.continent, Icon.data.zoneid, Icon.averageX, Icon.averageY);
+
+                        table.insert(QuestieUsedMiniMapNoteFrames, Icon);
                     end
                 end
             end
