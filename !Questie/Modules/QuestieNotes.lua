@@ -1005,6 +1005,9 @@ function Questie:NOTES_ON_UPDATE(elapsed)
 end
 function Questie:GetCurrentPlayerActualPosition()
     local map = QuestieZones[GetZoneText()]
+    if not map then
+        return
+    end
     return map[4], map[5]
 end
 ---------------------------------------------------------------------------------------------------

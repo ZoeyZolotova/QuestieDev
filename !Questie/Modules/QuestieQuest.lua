@@ -478,9 +478,8 @@ function Questie:CheckQuestLog()
         Questie:debug_Print("Quest:CheckQuestLog: UPON EXIT: [QuestsCount: "..QuestsCount.."] | [LastCount: "..LastQuestLogCount.."]");
         return true;
     else
-        Questie:debug_Print("Quest:CheckQuestLog: NO CHANGE --> Refresh Notes and Tracker");
+        Questie:debug_Print("Quest:CheckQuestLog: NO CHANGE --> Refresh Tracker");
         Questie:AddEvent("SYNCLOG", 0.2);
-        Questie:AddEvent("DRAWNOTES", 0.4);
         Questie:AddEvent("TRACKER", 0.6);
         QUESTIE_LAST_UPDATE_FINISHED = GetTime();
         return nil;
@@ -616,6 +615,7 @@ function Questie:UpdateQuestsInit()
                 if (not lastObjectives[hash][obj]) then
                     lastObjectives[hash][obj] = {};
                 end
+                local desc, typ, done = QGet_QuestLogLeaderBoard(obj);
                 lastObjectives[hash][obj].desc = desc;
                 lastObjectives[hash][obj].typ = typ;
                 lastObjectives[hash][obj].done = done;
