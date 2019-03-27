@@ -1158,8 +1158,11 @@ function Questie:ClearWorldMapNotes()
     for k, v in pairs(QuestieUsedWorldMapNoteFrames) do
         Questie:Clear_Note(v)
     end
-    QuestieQueuedIcons["WorldMapNote"] = {}
     QuestieUsedWorldMapNoteFrames = {}
+    for k, v in pairs(QuestieQueuedIcons["WorldMapNote"]) do
+        Questie:Clear_Note(v)
+    end
+    QuestieQueuedIcons["WorldMapNote"] = {}
 end
 function Questie:ClearMiniMapNotes()
     if clustersByFrame ~= nil then clustersByFrame["MiniMapNote"] = nil end
@@ -1168,6 +1171,9 @@ function Questie:ClearMiniMapNotes()
         Questie:Clear_Note(v)
     end
     QuestieUsedMiniMapNoteFrames = {}
+    for k, v in pairs(QuestieQueuedIcons["MiniMapNote"]) do
+        Questie:Clear_Note(v)
+    end
     QuestieQueuedIcons["MiniMapNote"] = {}
 end
 ---------------------------------------------------------------------------------------------------
@@ -1556,7 +1562,10 @@ function Questie:DrawClusters(clusters, frameName, scale, frame, button)
         end
     end
 end
-QuestieQueuedIcons = {}
+QuestieQueuedIcons = {
+    ["MiniMapNote"] = {},
+    ["WorldMapNote"] = {}
+}
 function Questie:QueueIconDraw(frameName, Icon)
     if QuestieQueuedIcons[frameName] == nil then QuestieQueuedIcons[frameName] = {} end
     table.insert(QuestieQueuedIcons[frameName], Icon)
