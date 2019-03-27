@@ -1319,6 +1319,8 @@ function Questie:AddClusterFromNote(frame, identifier, v)
     end
     local roundedX = v.x;
     local roundedY = v.y;
+    local factor = 35
+    local maxCoord = 1.05 -- equivalent to Questie:RoundCoordinate(1, 35)
     if QuestieConfig.clusterQuests and frame == "WorldMapNote" and identifier ~= "Quests" then
         roundedX = Questie:RoundCoordinate(v.x, 35);
         roundedY = Questie:RoundCoordinate(v.y, 35);
@@ -1330,7 +1332,7 @@ function Questie:AddClusterFromNote(frame, identifier, v)
         C, Z = Questie:GetCurrentPlayerActualPosition()
     end
     local nX, nY = Astrolabe:TranslateWorldMapPosition(v.continent, v.zoneid, roundedX, roundedY, C, Z);
-    if not nX or not nY or nX < 0 or nX > 1 or nY < 0 or nY > 1 then
+    if not nX or not nY or nX < 0 or nX > maxCoord or nY < 0 or nY > maxCoord then
         return
     end
     if clustersByFrame[frame][identifier][v.continent][v.zoneid][roundedX] == nil then
